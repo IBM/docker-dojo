@@ -383,7 +383,7 @@ docker run golang \
     go build -tags netgo -installsuffix netgo -o myapp myapp.go
 ```
 
-And that’s partially correct, that will start a new container based on “golang” and execute the “go build” command. However, remember that the file system of that container is just whatever the “golang” Docker image had - which means it doesn’t have our source code. In order to fix that we can tell Docker to “mount” our source code (the “src” directory) into the container. Then those files will be available to all processes executed in the container. So, the command in the Makefile will now look like this:
+And that’s partially correct, that will start a new container based on “golang” and execute the “go build” command. However, remember that the file system of that container is just whatever the “golang” Docker image had - which means it doesn’t have our source code. In order to fix that we can tell Docker to “mount” our source code (the “src” directory) into the container. Then those files will be available to all processes executed in the container. So, the command in the Makefile will now look like this (as seen in Makefile1):
 
 docker run -v $(PWD):/src golang \
     go build -tags netgo -installsuffix netgo -o myapp myapp.go
@@ -416,15 +416,19 @@ docker run -v /home/user/myapp:/src -w /src golang \
 
 If you look in the current directory you should see “myapp” there:
 
+```
 $ ls -l
 total 5584
 -rw-r--r-- 1 user user      44 Sep  3 11:27 Makefile
 -rwxr-xr-x 1 root root 5706234 Sep  4 06:51 myapp
 -rw-r--r-- 1 user user     887 Sep  3 11:39 myapp.go
+```
 
-Test the Build
+### Test the Build
+
 Now we can run the program just to verify that it works:
 
+```
 $ ./myapp 8080
 Will show:
 <pre><b>v1.0 Host: docker  Date: 2016-09-04 05:27:42.582058185 -0700 PDT</b>
@@ -436,11 +440,13 @@ Will show:
 172.20.0.1
 
 Listening on: 0.0.0.0:8080
+```
 
 You can see that this is just a very simple HTTP server, and any request sent to it will return the date and the list of IP addresses associated with each network interface.
 
 From another terminal window you can test it by using the following command:
 
+```
 $ curl localhost:8080
 <pre><b>v1.0 Host: docker  Date: 2016-09-04 05:27:42.582058185 -0700 PDT</b>
 127.0.0.1
@@ -449,9 +455,12 @@ $ curl localhost:8080
 172.19.0.1
 172.18.0.1
 172.20.0.1
+```
 
 And to stop the program, just press “control-c” in the first window.
-Summary
+
+### Summary
+
 In this section we’ve shown how Docker can be used to ensure we have the same environment throughout our entire development pipeline. By having a shared set of Docker images we can ensure that everyone will use the same version of each tool and dependency all the way through the process. Additionally, developers, testers, etc. do not need to waste time installing or tracking updates - it’s all managed centrally by the owners of the specific images being used.
 
 All new people needed to do in advance is:
@@ -459,88 +468,117 @@ Have a VM + Docker installed
 Download the source code: e.g. git clone ...
 
 Organizations can now have better control, and reduced burden, with respect to management of their configurations and environments. 
-Discussion Point #1
+
+#### Discussion Point #1
+
 There are some aspect of this scenario that were ignored, let’s discuss them. First, notice that the owner of “myapp” is not the same as the rest of the files:
 
+```
 $ ls -l
 total 5584
 -rw-r--r-- 1 user user      44 Sep  3 11:27 Makefile
 -rwxr-xr-x 1 root root 5706234 Sep  4 06:51 myapp
 -rw-r--r-- 1 user user     887 Sep  3 11:39 myapp.go
+```
 
 Notice its “root” that owns “myapp”. This is because from inside of the container we were running as “root”. Specifically, the user ID of the user was “1” in the container, so the output file was assigned the same user ID and back on the host it maps to “root”. In order to fix this we would need to tell Docker to run the “go build” process under the same user ID that we use on the host, meaning user ID “1000” (that’s the ID for user “user”). We could do this by modifying the Makefile like this:
 
+```
 docker run -u 1000:1000 -v $(PWD):/src -w /src golang \
       go build -tags netgo -installsuffix netgo -o myapp myapp.go
+```
 
 Notice the “-u 1000:1000” flag. That tells Docker to set the user ID and the group ID of the process to “1000” when it executes the command. You can try this yourself by running “make” using “Makefile2” - but you’ll want to remove “myapp” first:
 
+```
 $ rm -f myapp
 $ make -f Makefile2
 docker run -u 1000:1000 -v /root/src/github.com/ibm-dojo/myapp:/src -w /src golang \
   go build -tags netgo -installsuffix netgo -o myapp myapp.go
-Discussion Point #2
+```
+
+#### Discussion Point #2
+
 You might be wondering about the claim that all we needed to provide to a developer was a clean Ubuntu machine with Docker installed, but then we talked about cloning the git repo that had the source code. Doesn’t that mean we need git installed too? Try this command:
 
+```
 $ which git
+```
 
 The result should be empty, meaning there is no “git” command in the PATH. What’s going on? Let’s look a bit deeper and ask the shell what “git” maps to (note the capital “V”):
 
+```
 $ command -V git
 alias git='docker run -ti -u 1000:1000 \
     -v /home/user:/tmphome -v $PWD:/wd \
     -w /wd -e HOME=/tmphome git'
+```
 
 The “git” command is aliased to run a docker container! Let’s walk through each of those arguments and explain what’s going on:
--ti  will connect stdin on the host to the container, and setup a tty
--u 1000:1000 tells Docker to run the process as “user”
--v /home/user:/tmphome will mount our $HOME dir into the container at /tmphome
--v $PWD:/wd will mount the current directory as /wd in the container
--w /wd will “cd” to /wd before running the process
--e HOME=/tmphome set the environment variable “HOME” to “/tmphome” in the container before running the process. This is needed so that git will find the $HOME/.gitconfig configuration file.
-git   is the command that is executed in the container, and any argument put after the “git” command on the command line will be appended to the end of the “docker run” command, meaning git in the container will get them.
+* `-ti`  will connect stdin on the host to the container, and setup a tty
+* `-u 1000:1000` tells Docker to run the process as “user”
+* `-v /home/user:/tmphome` will mount our $HOME dir into the container at /tmphome
+* `-v $PWD:/wd` will mount the current directory as /wd in the container
+* `-w /wd` will “cd” to /wd before running the process
+* `-e HOME=/tmphome` set the environment variable “HOME” to “/tmphome” in the container before running the process. This is needed so that git will find the $HOME/.gitconfig configuration file.
+* git   is the command that is executed in the container, and any argument put after the “git” command on the command line will be appended to the end of the “docker run” command, meaning git in the container will get them.
 
-That’s a lot of options, but for most situations it will work. The point of this little trick is to show you that using containers/Docker isn’t just for running “real” enterprise applications that are intended to ask as micro services. Of course that a great use, but Docker can also be used to simply run any command you want on your host without having to actually install it. As long as it can be put into a Docker image you can run it just as if it was installed locally - just without the installation headaches. Not sure you can do that with virtual machines. Try to consider what other programs you might want to run this way.
-DevOps Enablement: Building Value
+That’s a lot of options, but for most situations it will work. The point of this little trick is to show you that using containers/Docker isn’t just for running “real” enterprise applications that are intended to act as microservices. Of course that's a great use, but Docker can also be used to simply run any command you want on your host without having to actually install it. As long as it can be put into a Docker image you can run it just as if it was installed locally - just without the installation headaches. Not sure you can do that with virtual machines. Try to consider what other programs you might want to run this way.
+
+#### DevOps Enablement: Building Value
+
 In this section we’re going to explore how a developer can add value by creating new Docker images that can then be shared with others - either other users or for future steps in the CI/CD pipeline.
 Scenario
-As developer has built an application, in this case “myapp”, and they now want to share it with the rest of the CI/CD pipeline. It should be obvious that we’re going to do this by building a Docker image for this application and then share it with a Docker registry.
+A developer has built an application, in this case “myapp”, and they now want to share it with the rest of the CI/CD pipeline. It should be obvious that we’re going to do this by building a Docker image for this application and then share it with a Docker registry.
 
 Before we begin, let’s first make sure your version of “myapp” exists and is built properly (make sure you’re in the “myapp” directory):
 
+```
 $ rm -f myapp
 $ make -f Makefile2
 docker run -u 1000:1000 -v /home/user/myapp:/src -w /src golang \
   go build -tags netgo -installsuffix netgo -o myapp myapp.go
-Creating a Docker Image - Manually
+```
+
+#### Creating a Docker Image - Manually
+
 There are multiple ways to create Docker images, we’re going to explore two possible ways - first the manual way, and then we’ll step through the more proper, automated, way to do it.
 
 The manual way involves creating a Docker image by “snapshotting” a container that has the file system setup the way we want. To do this we’re going to follow some relatively simple steps.
 
 Step 1: create a new container for our application:
 
+```
 $ docker create ubuntu
 5ed983843bbaef1062096e456e6fd931e6f24e9399d7c801adc7f
+```
 
 Note the result is some unique identifier. This is the ID of the container and how we’ll reference it. When you reference a container by ID you’ll only need to specify enough characters to uniquely identify it from any other container.
 
 Step 2: copy the application into it:
 
+```
 $ docker cp myapp 5ed98:/myapp
+```
 
 Here the “docker cp” command should look similar to the “scp” command you may have used. The first argument is the file you want to copy, while the second argument is the destination container followed by a colon (:) and the location in the container to place the file. So, in this case we’re copying “myapp” to the root of the file system of the container.
 
 Step 3: snapshot the container as a Docker image called “myapp”:
 
+```
 $ docker commit -c "entrypoint /myapp" 5ed98 myapp
 sha256:7c640789dae5607c868a56883189d6c72478eff1080a67
+```
 
 In this command we’re using “commit”, which is the Docker snapshot (or image create) command. The “-c entrypoint /myapp” flag adds metadata to the resulting image that will tell Docker what command to execute by default when a new container is created from the image. In this case we want it to run “/myapp”. The next argument is the container we want to snapshot, and finally we give the name of the Docker image we to create, “myapp”.
 
 And that’s it.
-Test the Image
+
+#### Test the Image
+
 Now that we have a new image, let’s test it. We’re going to run it the same way we did the previous Docker commands:
 
+```
 $ docker run -ti myapp
 Will show:
 <pre><b>v1.0 Host: 165dcbc3e6f8  Date: 2016-09-05 02:47:50.2...</b>
@@ -548,22 +586,29 @@ Will show:
 172.17.0.2
 
 Listening on: 0.0.0.0:80
+```
 
 And, in another window try to hit the server using the “172.” IP address - that’s the IP address of the container as seen by the host:
 
+```
 $ curl 172.17.0.2
 <pre><b>v1.0 Host: b8d73b85cc04  Date: 2016-09-05 02:53:49.803922...</b>
 127.0.0.1
 172.17.0.2
+```
 
 We’ve now successfully create a new Docker image containing our application and verified that it does in fact work as expected via “docker run”. You can now stop the container in the first window by pressing “control-c” in that window.
-Discussion
+
+#### Discussion
+
 In the previous exercise we ran our application in a container and accessed it by talking directly to the container’s IP address. This is fine when we want to access it from this machine, but what if we want to access it from a remote host? Can we expose this container at the “host level” so that others can access it?
 
 Yes. If you remember in our introduction section we talked about one of the the jobs of the Docker engine is to map ports from the host to ports within the container - that’s what we need to do in this case. For our example, what we need to do is map port 80 in the container to some unique (unused) port on the host:
 
+```
 $ docker run -d -ti -p 9999:80 myapp
 4b08d035deb6135eff60babd1368ab47c0c1f1d09a8ddf3f9417e7e4c4
+```
 
 There are two new flags being introduced here. First the “-d” flag - that tells Docker to run the container in the background (as a daemon). That’s why we didn’t see the normal output from “myapp” and instead we see the ID of the resulting container (4b08… in this case). This is so that we can refer to it later - like when we want to stop it.
 
@@ -571,33 +616,44 @@ The second new flag is “-p 9999:80”. This tells Docker to map port “9999�
 
 We can test this by trying to connect to our machine at port 9999:
 
+```
 $ curl localhost:9999
 <pre><b>v1.0 Host: 4b08d035deb6  Date: 2016-09-05 03:14:31.713...</b>
 127.0.0.1
 172.17.0.2
+```
 
 And it worked. Now we can stop and delete the container using the “docker rm” command and referencing the container ID returned from the “docker run” command:
 
+```
 $ docker rm 4b08
 Failed to remove container ...
+```
 
 It failed! This is because by default Docker will not let to delete a container that is still running. We can, however, force it by adding the “-f” flag:
 
+```
 $ docker rm -f 4b08
 4b08
-Creating a Docker Image - With Docker Build
-Now that we’ve seen how to create a Docker image by snapshotting a container that we built up manually, let’s see the more proper way to create to do it.
+```
+
+#### Creating a Docker Image - With Docker Build
+
+Now that we’ve seen how to create a Docker image by snapshotting a container that we built up manually, let’s see the more proper way to do it.
 
 Docker provides a “build” feature that is specifically designed for this purpose. It uses a file called “Dockerfile” as the list of instructions for how to construct the image - not unlike how a Makefile contains the list of instruction on how to perform some tasks. Let’s look at the Dockerfile that is provided for you in the “myapp” directory:
 
+```
 $ cat Dockerfile
 FROM ubuntu
 ADD myapp /
 EXPOSE 80
 ENTRYPOINT /myapp
+```
 
 We’ll explain each line of this file by also looking at the output of the “docker build” command at the same time. So, let’s build it (note the period (.) at the end, that’s very important):
 
+```
 $ docker build -t myapp .
 Sending build context to Docker daemon 5.767 MB
 Step 1/4 : FROM ubuntu
@@ -614,61 +670,80 @@ Step 4/4 : ENTRYPOINT /myapp
  ---> 684c6c2572ff
 Removing intermediate container f318d82c2c38
 Successfully built 684c6c2572ff
+```
 
 Looking at each step:
 
+```
 $ docker build -t myapp .
+```
 
 As you might have guessed, this is the command to build an image. The “-t myapp” flag tells Docker what to name the resulting image, in this case “myapp”. The “t” stands for “tag” - just an alias for “name”. The period (.) at the end tells Docker where to find the input to the build - in this case the current directory.
 
+```
 Sending build context to Docker daemon 5.767 MB
+```
 
 When doing a build, Docker will grab all of the files from the directory you pointed it to (“.” in our case), and send it to the Docker engine - it calls these files the “build context”. And in our case the total size of our build context is around 5 megabytes.
 
 Once the build context is sent, the engine will unpack it into a new directory and now those files are available to the build process, as/if needed.
 
+```
 Step 1/4 : FROM ubuntu
  ---> ff6011336327
+```
 
 Now we’re actually starting to build up our container that will result in the image. Here we’re telling Docker to start with an image called “ubuntu”. Notice that this is the same thing we did in the manual process when we did “docker create ubuntu”.
 
+```
 Step 2/4 : ADD myapp /
  ---> b867e19a859b
 Removing intermediate container ea699ecc51a0
+```
 
 This “ADD” command will copy a file from the current directory (the root of the unpacked build context directory on the engine) to the root of the container’s file system (/). This is the equivalent of the “docker cp myapp 5ed98:/myapp” command we did during the manual process.
 
 There’s also some interesting output here. The “---> b867e19a859b” line tells us the ID of the resulting image from this step. Most steps in a Dockerfile will actually result in a brand new image. If you remember the discussion around Image “layers”, this is how those layers are created - each build step image is actually a layer in the final image. And finally the “Removing…” line tell us that Docker is removing the temporary container it created as part of this build step. Most build steps will actually create a new container using the image from the previous step and then erase it when done.
 
+```
 Step 3/4 : EXPOSE 80
  ---> Running in 85c240f03ae9
  ---> 5d8e53bbf9e4
 Removing intermediate container 85c240f03ae9
+```
 
 Here we’re not actually modifying the file system of any container/image, we’re just added extra metadata to the image. And, in this case we’re telling Docker that we’re going to expect incoming traffic to come in on port 80. This will be useful if we ever ask Docker to automatically map all exposed ports to the host - because the list of ports will be taken from these EXPOSE commands. You can still do the mapping manually (as we did before) if needed though.
 
+```
 Step 4/4 : ENTRYPOINT /myapp
  ---> Running in f318d82c2c38
  ---> 684c6c2572ff
 Removing intermediate container f318d82c2c38
 Successfully built 684c6c2572ff
+```
 
 And in this last step we’re doing the equivalent of the “-c "entrypoint /myapp" option we specified on the “docker commit” command - we’re specifying the default command to run when a new container is created from this image. So this is just modifying the metadata of the resulting image.
 
 Notice the “---> 684c6c2572ff” line, like the others tells us the resulting image ID for this step. But, it’s also the resulting image ID for the entire build process since that was the final step. So, we’ve now build a new image whose ID is 684c6c257ff as well as “myapp” based on the “-t myapp” flag we provided. You can technically refer to the image using either the ID or name.
-Test the Image - With Auto-Port Allocation
+
+#### Test the Image - With Auto-Port Allocation
+
 Now that we’ve built the image again, using Docker’s build facility, we can test it but this time we’re going to let Docker do the port mapping for us automatically:
 
+```
 $ docker run -tidP myapp
 469221295fae1b57615286ec7268272e3d3583c12ea66e14b2
+```
 
 On this “docker run” command we’re using the “-tid” flags we’ve already discussed, but we’re also using the “-P” flag - notice its capital “P” not lower-case. This tells Docker to automatically map all ports specified by the EXPOSE command in the Dockerfile to a randomly selected port on the host. We can see the port it chose by using the “docker ps” command:
 
+```
 $ docker ps
 CONTAINER ID  IMAGE  COMMAND          	CREATED     	STATUS
            	PORTS               	NAMES
 469221295fae  myapp  "/bin/sh -c /myapp"  4 seconds ago   Up 4
 seconds    	0.0.0.0:32768->80/tcp   clever_ardinghelli
+```
 
 The “docker ps” command lists the running container on this host. Most of the columns should be obvious, but let’s focus on the “PORTS” column which has “0.0.0.0:32768->80/tcp” in it. This means that Docker has automatically mapped port 32768 on the host to port 80 in the container and will route all “tcp” traffic to it. This saves us the trouble of doing a “-p 32768:80” on the “docker run” command, but the downside is that you’ll need to ask Docker for the port number used since it will be random each time.
 
