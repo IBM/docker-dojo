@@ -481,7 +481,7 @@ total 5584
 -rw-r--r-- 1 user user     887 Sep  3 11:39 myapp.go
 ```
 
-Notice its “root” that owns “myapp”. This is because from inside of the container we were running as “root”. Specifically, the user ID of the user was “1” in the container, so the output file was assigned the same user ID and back on the host it maps to “root”. In order to fix this we would need to tell Docker to run the “go build” process under the same user ID that we use on the host, meaning user ID “1000” (that’s the ID for user “user”). We could do this by modifying the Makefile like this:
+Notice it's “root” that owns “myapp”. This is because from inside of the container we were running as “root”. Specifically, the user ID of the user was “1” in the container, so the output file was assigned the same user ID and back on the host it maps to “root”. In order to fix this we would need to tell Docker to run the “go build” process under the same user ID that we use on the host, meaning user ID “1000” (that’s the ID for user “user”). We could do this by modifying the Makefile like this:
 
 ```
 docker run -u 1000:1000 -v $(PWD):/src -w /src golang \
@@ -580,7 +580,6 @@ Now that we have a new image, let’s test it. We’re going to run it the same 
 
 ```
 $ docker run -ti myapp
-Will show:
 <pre><b>v1.0 Host: 165dcbc3e6f8  Date: 2016-09-05 02:47:50.2...</b>
 127.0.0.1
 172.17.0.2
@@ -597,7 +596,7 @@ $ curl 172.17.0.2
 172.17.0.2
 ```
 
-We’ve now successfully create a new Docker image containing our application and verified that it does in fact work as expected via “docker run”. You can now stop the container in the first window by pressing “control-c” in that window.
+We’ve now successfully created a new Docker image containing our application and verified that it does in fact work as expected via “docker run”. You can now stop the container in the first window by pressing “control-c” in that window.
 
 #### Discussion
 
@@ -623,7 +622,7 @@ $ curl localhost:9999
 172.17.0.2
 ```
 
-And it worked. Now we can stop and delete the container using the “docker rm” command and referencing the container ID returned from the “docker run” command:
+And it worked. Now we can stop and delete the container using the “docker rm” command and reference the container ID returned from the “docker run” command:
 
 ```
 $ docker rm 4b08
@@ -712,7 +711,7 @@ Step 3/4 : EXPOSE 80
 Removing intermediate container 85c240f03ae9
 ```
 
-Here we’re not actually modifying the file system of any container/image, we’re just added extra metadata to the image. And, in this case we’re telling Docker that we’re going to expect incoming traffic to come in on port 80. This will be useful if we ever ask Docker to automatically map all exposed ports to the host - because the list of ports will be taken from these EXPOSE commands. You can still do the mapping manually (as we did before) if needed though.
+Here we’re not actually modifying the file system of any container/image, we’re just adding extra metadata to the image. And, in this case we’re telling Docker that we’re going to expect incoming traffic to come in on port 80. This will be useful if we ever ask Docker to automatically map all exposed ports to the host - because the list of ports will be taken from these EXPOSE commands. You can still do the mapping manually (as we did before) if needed though.
 
 ```
 Step 4/4 : ENTRYPOINT /myapp
@@ -735,7 +734,7 @@ $ docker run -tidP myapp
 469221295fae1b57615286ec7268272e3d3583c12ea66e14b2
 ```
 
-On this “docker run” command we’re using the “-tid” flags we’ve already discussed, but we’re also using the “-P” flag - notice its capital “P” not lower-case. This tells Docker to automatically map all ports specified by the EXPOSE command in the Dockerfile to a randomly selected port on the host. We can see the port it chose by using the “docker ps” command:
+On this “docker run” command we’re using the “-tid” flags we’ve already discussed, but we’re also using the “-P” flag - notice it's capital “P” not lower-case. This tells Docker to automatically map all ports specified by the EXPOSE command in the Dockerfile to a randomly selected port on the host. We can see the port it chose by using the “docker ps” command:
 
 ```
 $ docker ps
@@ -751,37 +750,53 @@ One final thing to note is that in the “NAME” column we have a value of “c
 
 Now, let’s test it by trying to talk to that host port we saw in the “docker ps” output (note: your port number may be different):
 
+```
 $ curl localhost:32768
 <pre><b>v1.0 Host: 469221295fae  Date: 2016-09-05 03:34:49....</b>
 127.0.0.1
 172.17.0.3
+```
 
 And finally, let’s stop and delete our container:
 
+```
 $ docker rm -f 469
 469
-Sharing the Image
+```
+
+#### Sharing the Image
+
 Now that we know how to build our image we need to make it available in some registry for other people to download it and use it. Normally, you would upload (or “push”) it to some shared registry but for our exercise we’re not going to use a real public registry, instead we’re going to start a registry locally on this VM and push the image to it. You can start the registry via the following command:
 
+```
 $ regStart
+```
 
 Under the covers this command will start a new Docker container running a Docker image registry.
-Naming Images
+
+#### Naming Images
+
 Before we can upload the image we need to modify its name. Each image that is put into a registry must adhere to a certain naming pattern, the general syntax of image names is:
 
 [[registry/][namespace/]]name[:tag]
 
 It indicates that just the “name” portion is required, and while that’s true for images that are just local, you will need more if you want to push it to a registry. Let’s look at each part of this naming schema:
+
 “registry/” - this is the hostname of the registry into which you want to push the image. In our case since we’re pushing it to a registry running on this host (and our hostname is “docker”) we can just use “docker/” for this part of the name.
+
 “namespace/” - in some registries they require you to provide the “namespace” into which the image is placed. Think of it as the account name that will own it. For our case the registry doesn’t have any namespaces so we can leave that off.
+
 “:tag” - this is an optional qualifier for the image. Often this will include the version number of the image. Docker itself doesn’t really do anything with this information other than use it to find the image you want. In particular, it makes no attempt to understand the value you provide. Meaning if you name one image as “myapp:1.0” and another as “myapp:2.0” then while Docker will group those two image together because they share the same base name (myapp), it doesn’t know that “myapp:2.0” is a newer version of the image - aside from the fact that it will most likely have a new timestamp. There is no versioning logic within Docker or the registry. If you don’t specify a “tag” then you can always use the value of “latest” when creating a new container and Docker will find the very latest (per timestamp) version of the image to use.
 
 Notice that per the schema that if only one of “registry” or “namespace” is specified you can’t tell which one it is. Docker solves this by requiring the “registry” value to include the port number of the registry. So, the presence of a “:” in the string indicates you’re specifying the “registry” and not the “namespace”.
 
 For our example we’re going to name the image “docker:5000/myapp:1.0”
-Preparing our Image
+
+#### Preparing our Image
+
 Now that we know what we need to call our image we can rerun the Docker build command with the correct “-t” flag this time:
 
+```
 $ docker build -t docker:5000/myapp:1.0 .
 Sending build context to Docker daemon 5.767 MB
 Step 1/4 : FROM ubuntu
@@ -796,6 +811,7 @@ Step 4/4 : ENTRYPOINT /myapp
  ---> Using cache
  ---> 684c6c2572ff
 Successfully built 684c6c2572ff
+```
 
 The output should look fairly similar to what we saw before except now we see a lot of “---> Using cache” lines. This is because Docker is smart enough to know that it’s already seen the result of this build step and has the resulting image in its cache already, so it’s going to use that instead. This is all related to that sharing of layers we talked about previously.
 
@@ -803,10 +819,15 @@ The cache look-up mechanism very simplistic. It will look for an image in the ca
 
 Notice that the resulting image ID from the entire build is the exact same as before. This is because we didn’t actually change anything in it, all we’re doing is adding another name (alias) to an existing image. This means that we could have technically gotten the exact same result using the “docker tag” command - which adds a new name/tag to an existing image:
 
+```
 $ docker tag myapp docker:5000/myapp:1.0
-Pushing the Image
+```
+
+### Pushing the Image
+
 Now that we’ve named the image properly we can push it to our local registry:
 
+```
 $ docker push docker:5000/myapp:1.0
 The push refers to a repository [docker:5000/myapp]
 5d1c38831713: Pushed
@@ -814,35 +835,47 @@ The push refers to a repository [docker:5000/myapp]
 df9a135a6949: Pushed
 dbaa8ea1faf9: Pushed
 8a14f84e5837: Pushed
-latest: digest: sha256:71f76c1b360e340614a52bcfef2cb78d8f0aa3604 size: 1363
+latest: digest: sha256:71f76c1b360e340614a52bcfef2cb78d8f0aa3604 size: 
+```
 
 From the output you’ll notice that there are actually 5 different images pushed, that is because there were 5 different layers/image created under the covers.
 
 With the image in the registry we it can now be used by other parts of the CI/CD pipeline. Other people can access it, assuming they have access to your registry, by using the following command:
 
+```
 $ docker run -ti docker:5000/myapp:1.0
+```
 
 Or, if they want to just download it without running it right away, they can use the “docker pull” command - which just its it in their local image cache:
 
+```
 $ docker pull docker:5000/myapp:1.0
-Summary
-We’ve seen how you can build images manually as well as using Docker’s build facility, meaning Dockerfiles. Hopefully, this has shown you that the process by which you create generate new content, either for personal use or for your product build pipelines, is relatively trivial.
+```
 
-While there are a lot of other Dockerfile commands that we didn’t touch on in this exercise, checkout the Docker document for the complete list and you’ll see that most of them are similarly easy to use and understand. Docker tried really hard to keep things as easy as possible.
+#### Summary
+
+We’ve seen how you can build images manually as well as use Docker’s build facility, meaning Dockerfiles. Hopefully, this has shown you that the process by which you generate new content, either for personal use or for your product build pipelines, is relatively trivial.
+
+There are a lot of other Dockerfile commands that we didn’t touch on in this exercise, checkout the Docker document for the complete list and you’ll see that most of them are similarly easy to use and understand. Docker tried really hard to keep things as easy as possible.
 
 As a reminder, when you consider using Docker try to think of additional uses that might make your life easier. As previously stated, Docker isn’t just for hosting enterprise applications - it’s very useful even in local environments to simply make installing and managing application easier.
 
-Just to mention one use case, to get your creative juices flowing, is the process of testing a piece of software. Imagine a scenario where you need to reset the database after each test. Normally you might consider doing something like rollbacking back the database or even deleting it and recreating it - loading all of the predefined data that might need to be in there. With Docker there is another alternative. Consider creating a Docker image of your database and then you can create, use and delete containers based on that image trivially - and quickly. This would allow you to, in millisecond, reset your database to a predefined state by simply deleting the old container and starting a new one. Its this kind of flexibility that Docker bring and has enable a whole new set of use cases that just were not possible before.
-Discussion Point
+Just to mention one use case to get your creative juices flowing, is the process of testing a piece of software. Imagine a scenario where you need to reset the database after each test. Normally you might consider doing something like rolling back the database or even deleting it and recreating it - loading all of the predefined data that might need to be in there. With Docker there is another alternative. Consider creating a Docker image of your database and then you can create, use and delete containers based on that image trivially - and quickly. This would allow you to, in milliseconds, reset your database to a predefined state by simply deleting the old container and starting a new one. It's this kind of flexibility that Docker brings and enables a whole new set of use cases that just were not possible before.
+
+#### Discussion Point
+
 When we built our “myapp” image we started from a “ubuntu” Docker image - you saw this in the manual process when we did “docker create ubuntu” and in the Dockerfile when we used the “FROM ubuntu” command. While this works, it’s a bit of an overkill. Our application actually doesn’t need anything from Ubuntu in order to work properly. No system services, nor Ubuntu operating system files. All we need is the one “myapp” executable. This means that our resulting Docker image is probably a lot larger than it needs to be. Let’s check:
 
+```
 $ docker images | grep myapp
 docker:5000/myapp  1.0   684c6c2572ff  7 hours ago  193.7 MB
+```
 
 You should see that your image is almost 200 megabytes, that’s quite a bit larger than the executable itself, which is only around 6 megabytes. Even though Docker is really good at caching and image/layer reuse, this is something we really should fix so that when someone wants to use our image we don’t require them to also download the Ubuntu image. This will really speed up download times.
 
 So, how do we fix this? In our case it’s actually very simple. Rather than building an image from “ubuntu” we instead use an image called “scratch” - which is well-defined name/keyword that tells Docker to create an empty container for our build with no files in the file system at all. Let’s try this out by using “Dockerfile2”:
 
+```
 $ docker build -f Dockerfile2 -t docker:5000/myapp:1.0 .
 Sending build context to Docker daemon 5.938 MB
 Step 1/4 : FROM scratch
@@ -859,16 +892,23 @@ Step 4/4 : ENTRYPOINT /myapp
  ---> 022343fae8e4
 Removing intermediate container 8c15aeb6ad84
 Successfully built 022343fae8e4
+```
 
-Notice that the cache wasn’t use at all because we didn’t start from the same base image as before. Now let’s check the size of the image:
+Notice that the cache wasn’t used at all because we didn’t start from the same base image as before. Now let’s check the size of the image:
 
+```
 $ docker images | grep myapp
 docker:5000/myapp  1.0  9b604f2e42da 7 seconds ago 5.84 MB
+```
 
 Notice that the image is now much smaller. Before we continue, let’s push this updated image to our registry so we can use it later on:
 
+```
 $ docker push docker:5000/myapp:1.0
-DevOps Enablement: Scaling and Reliability
+```
+
+#### DevOps Enablement: Scaling and Reliability
+
 In this section we’re going to look into how Docker can help manage our running applications in a more real world environment by ensuring that we have redundancy, reliability and good performance.
 
 As we move from monolithic applications into a micro-services world, it can be complex to manage these individual services. Each needs to address issues such as clustering, high-availability, scaling and versioning - all with no downtime. In the following exercises we’ll walk through how Docker addresses these issues.
