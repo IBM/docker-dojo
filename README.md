@@ -385,8 +385,10 @@ docker run golang \
 
 And that’s partially correct, that will start a new container based on “golang” and execute the “go build” command. However, remember that the file system of that container is just whatever the “golang” Docker image had - which means it doesn’t have our source code. In order to fix that we can tell Docker to “mount” our source code (the “src” directory) into the container. Then those files will be available to all processes executed in the container. So, the command in the Makefile will now look like this (as seen in Makefile1):
 
+```
 docker run -v $(PWD):/src golang \
     go build -tags netgo -installsuffix netgo -o myapp myapp.go
+```
 
 Note: The “$(PWD)” is Makefile syntax for using the “PWD” environment variable’s value. You are not expected to run this command yourself on the command line (which is why it’s not in bold), but if you really want to try it then replace it with “$PWD”, no parens.
 
@@ -394,8 +396,10 @@ The “-v $(PWD):/src” tells Docker to mount a volume (the “-v” flag) into
 
 So, that’s good. We can now see our files in the container, but there’s one last step. We need to tell Docker which directory we want the command to be executed in. In other words, since our “myapp.go” file is now visible in the “/src” directory, we should “cd” to that directory first before we run the “go build” command. We do this with the “-w” flag on the “docker run” command - that tells docker what the “working directory” should be:
 
+```
 docker run -v $(PWD):/src -w /src golang \
   	go build -tags netgo -installsuffix netgo -o myapp myapp.go
+```
 
 And that’s the complete command. Let’s summarize what we learned:
 “docker run golang” will create a new container based on the “golang” image
@@ -410,9 +414,11 @@ One last point… where does the output from the build go?
 
 Because of the “-o myapp” flag we can see that the compiler will put the result in a file called “myapp” in the current directory - which is “/src”. But because “/src” is mounted from our current directory on the host, it should end up in that same current directory from which we ran the “make” command - outside of the container. Let’s try it and see by using “Makefile1”:
 
+```
 $ make -f Makefile1
 docker run -v /home/user/myapp:/src -w /src golang \
   go build -tags netgo -installsuffix netgo -o myapp myapp.go
+```
 
 If you look in the current directory you should see “myapp” there:
 
@@ -840,13 +846,13 @@ latest: digest: sha256:71f76c1b360e340614a52bcfef2cb78d8f0aa3604 size:
 
 From the output you’ll notice that there are actually 5 different images pushed, that is because there were 5 different layers/image created under the covers.
 
-With the image in the registry we it can now be used by other parts of the CI/CD pipeline. Other people can access it, assuming they have access to your registry, by using the following command:
+With the image in the registry it can now be used by other parts of the CI/CD pipeline. Other people can access it, assuming they have access to your registry, by using the following command:
 
 ```
 $ docker run -ti docker:5000/myapp:1.0
 ```
 
-Or, if they want to just download it without running it right away, they can use the “docker pull” command - which just its it in their local image cache:
+Or, if they want to just download it without running it right away, they can use the “docker pull” command - which just puts it in their local image cache:
 
 ```
 $ docker pull docker:5000/myapp:1.0
@@ -856,7 +862,7 @@ $ docker pull docker:5000/myapp:1.0
 
 We’ve seen how you can build images manually as well as use Docker’s build facility, meaning Dockerfiles. Hopefully, this has shown you that the process by which you generate new content, either for personal use or for your product build pipelines, is relatively trivial.
 
-There are a lot of other Dockerfile commands that we didn’t touch on in this exercise, checkout the Docker document for the complete list and you’ll see that most of them are similarly easy to use and understand. Docker tried really hard to keep things as easy as possible.
+There are a lot of other Dockerfile commands that we didn’t touch on in this exercise. Checkout the Docker document for the complete list and you’ll see that most of them are similarly easy to use and understand. Docker tried really hard to keep things as easy as possible.
 
 As a reminder, when you consider using Docker try to think of additional uses that might make your life easier. As previously stated, Docker isn’t just for hosting enterprise applications - it’s very useful even in local environments to simply make installing and managing application easier.
 
@@ -914,7 +920,9 @@ In this section we’re going to look into how Docker can help manage our runnin
 As we move from monolithic applications into a micro-services world, it can be complex to manage these individual services. Each needs to address issues such as clustering, high-availability, scaling and versioning - all with no downtime. In the following exercises we’ll walk through how Docker addresses these issues.
 Scenario
 Given an application that has been “containerized”, how do we deploy it in such a way that it has high-availability? We then need to update it to a new version with zero downtime.
-Docker Orchestration
+
+#### Docker Orchestration
+
 In version 1.12 of Docker they introduced the notion of a “Service”. A Service is simply a scaled cluster of Docker containers that are all based on the same image. Docker will grow or shrink the number of instances based on the desired number a requested by the developer. If containers fail, or die, Docker will detect this and bring up new ones to take their place.
 
 While up until now we’ve only talked about Docker running on a single host, the Docker engine actually has the logic to manage a cluster of Docker hosts. In this environment, all of the Docker engines work together to ensure that the user’s desired state with respect to the scaling of their services is achieved.
@@ -922,17 +930,20 @@ Terminology
 Before we go any further, there are some new Docker terms that need to be introduced:
 
 Worker - a Docker Host capable of accepting requests to manage single containers. In many ways you can think of this as just a new name for the existing Docker host we’ve been using all along.
+
 Manager - A Docker Host capable of accepting requests to manage “Services”. Managers can also act as a Worker though.
 
 The difference between the two types of Docker hosts is actually more of a configuration thing. In both cases they will have Docker engines running, except Docker Managers will have an additional set of APIs enabled that can be invoked to manage “Services” - while Workers will have those APIs disabled. As you might expect, this does mean that any one host could technically, and easily, switch its role in the cluster at any time based on the needs of the environment.
 
 From a user’s perspective you’ll need to know which type of host to talk to in order to perform any particular task. To put it simply, when you want to manage single containers, your client needs to target a “Worker” host. When you want to manage “Services” the client needs to target a “Manager” host.
-Workers, Managers and the “Mesh”
-Docker actually has two different ways in which you can interact with a cluster of Docker hosts - and oddly (unfortunately) they both use the word “swarm” in their names: Swarm vs SwarmKit.
 
+#### Workers, Managers and the “Mesh”
+
+Docker actually has two different ways in which you can interact with a cluster of Docker hosts - and oddly (unfortunately) they both use the word “swarm” in their names: Swarm vs SwarmKit.
 
 Let’s talk about “Swarm” first. Swarm involves putting a proxy in-front of a set of Docker hosts such that from the client’s point of view they only see a single Docker host. This proxy will then aggregate all interactions with the Docker hosts such that all data seen by the client.
 
+![docker swarm](images/docker_swarm.png)
 
 There are some options that you can use when you deploy your application to control which host your container will run on, but for the most part the idea is that as an end-user you should be unaware of the specific Docker hosts involved. Notice that this doesn’t involve scaling of containers - it is still single container management, but it is worth mentioning just for background.
 
@@ -940,6 +951,7 @@ With that, let’s move on to the more interesting cluster management tool, Swar
 
 SwarmKit, like Swarm, will manage containers across a set of Docker hosts, but it doesn’t do it with the goal of hiding the hosts from you, rather it does it so it can leverage all of the hosts to run containers. Looking at the overall architecture of SwarmKit we see something like this:
 
+![docker swarmkit](images/docker_swarmkit.png)
 
 
 Starting at the bottom of the picture, we have the same 3 Docker hosts (workers) we saw in Swarm. However, now we’re going to add 2 more Docker Hosts that not only act as Workers (meaning you can talk to them to start individual containers), but they’re also Managers. This means they are part of the infrastructure to manage “Services”. All of the Managers in a cluster will communicate with each other via Raft - to gain consensus when it comes to deciding what actions to take.
@@ -949,8 +961,9 @@ Moving to the top of the picture, a Docker client (performing a “Service” re
 Overall, it’s a fairly simple model - we have a set of Managers coordinating Services (scaled containers) across a set of Workers.
 
 However, there is one very interesting additional feature. On the left side of the picture we have a Service Client, meaning someone is who trying to access a Service that is hosted in the cluster. Typically the incoming request will go through a load balancer, and then routed to one of the Workers. Which one? It doesn’t matter! Docker has introduced a networking mesh such that if a request for a service goes to a Worker node that doesn’t have an instance of that Service running, that node will then route the request automatically to a Worker node that does have it running. This means that you can add new nodes into the cluster with minimal effort - all you need to do is:
-Register the new Worker with the cluster Managers
-Add it to the load-balancer on the left side of the picture
+
+1. Register the new Worker with the cluster Managers
+2. Add it to the load-balancer on the left side of the picture
 
 That’s it. Like most of Docker, they worked really hard to keep it simple and easy on the user.
 
@@ -964,11 +977,14 @@ There is a shared port space across all nodes. This means that when you choose t
 Part 1 - Deploy our Docker Cluster
 In order for us to play with a multi-node cluster we’re going to simulate it by creating a set containers running a Docker engine - these will represent individual nodes in the cluster. Here’s a pictorial view of what we’re going to setup:
 
+![docker engine](images/docker_engine.png)
 
 
 We’re going to use the real (main) Docker engine as the Manager, and then create new containers (running Docker) to act as the workers. You can do this by running the following command:
 
+```
 $ swarmDemo1
+```
 
 Normally you would be asked to type all of the commands yourself, but there are a lot of commands needed to be executed and any small typo could really slow things down. This script will simply do the typing for you, but all commands are still executed in real-time on your machine. Just press “enter” to proceed to the next command - it will pause before and after each command.
 
@@ -976,8 +992,10 @@ Rather than walking through all of the commands in that script, we’ll just tal
 
 To start, we first need to start some containers to simulate nodes in our cluster. Each of the containers will be running a Docker engine - yes, Docker running within Docker:
 
+```
 $ docker run --privileged -dti --name node1 --hostname node1 ibmdojo/dind --insecure-registry docker:5000
 4bcfcff710a5a60c1c87c9365aeaff055fd39c9f8d8df47a047e09a6b12cee0b
+```
 
 Notice that we’re running an image called “ibmdojo/dind” (“dind” stands for “docker in docker”).
 
@@ -988,82 +1006,107 @@ Some new flags are being used here:
 
 During the exercises we’ll be talking directly to each node in the cluster, in order to do that we’ll need to keep track of each node’s (container’s) IP address. To obtain that we can use the “docker inspect” command:
 
+```
 $ docker inspect --format {{.NetworkSettings.Networks.bridge.IPAddress}} node1
 172.17.0.3
+```
 
 The --format flag allow us to format the output, and in this case we’re asking for just the IPAddress property. By default Docker will show a very large piece of JSON containing all of the metadata about the container.
 
 After we’ve create 2 new containers representing two nodes for our cluster, we’ll need to convert our real/main Docker engine into a Manager but initializing Docker swarm:
 
+```
 $ docker swarm init
 Swarm initialized: current node (r1g32c5isaya83t1ljqt4wojf) is now a manager.
+```
 
 To add a worker to this swarm, run the following command:
 
+```
     docker swarm join \
     --token SWMTKN-1-69pqsmj4561dga5rd4upbg39qsj9g8r3wqqvz7uzwh7d8ljpce-e12m9txy0jbqlagluzidpmbgv \
     10.0.2.15:2377
+```
 
 To add a manager to this swarm, run 'docker swarm join-token manager' and follow the instructions.
 
 The output of this command shows you exactly what you need to do to add new workers to this swarm cluster. So, we’ll use that “docker swarm join” command mentioned and execute it on each Worker node in our cluster:
 
+```
 $ docker exec -ti node1 docker swarm join --token SWMTKN-1-69pqsmj4561dga5rd4upbg39qsj9g8r3wqqvz7uzwh7d8ljpce-e12m9txy0jbqlagluzidpmbgv 10.0.2.15:2377
 This node joined a swarm as a worker.
+```
 
 You’ll notice that the command in black/bold is exactly what we were told to run from the “docker swarm init” output. The part of the command in red is extra. The “docker exec” command allows for us to run additional processes in an existing container. So in this case we’re telling Docker to run a new process in a container called “node1”, and the process we’re running is the “docker swarm join…” command. In essence, all we’re ssh-ing over to that node and telling it to join the swarm.  We’ll do this for both of the nodes/containers.
 
 For reference, we could have also gotten the same net effect by simply directing the “docker swarm join” command to the Docker engine running on node1 via the DOCKER_HOST environment variable:
 
+```
 $ DOCKER_HOST=172.17.0.3:2375 docker swarm join --token SWMTKN-1-69pqsmj4561dga5rd4upbg39qsj9g8r3wqqvz7uzwh7d8ljpce-e12m9txy0jbqlagluzidpmbgv 10.0.2.15:2377
+```
 
 This tells the Docker client to talk to the Docker engine on host 172.17.04, port 2375, rather than to the local Docker engine we would normally talk to. But, using “docker swarm join...” doesn’t introduce “docker exec” and the idea of running a second process in a container.
 
 When it’s done, we’ll then look at all of the nodes in the swarm using this command:
 
+```
 $ docker node ls
 ID                           HOSTNAME  STATUS  AVAILABILITY  MANAGER STATUS
 r1g32c5isaya83t1ljqt4wojf *  docker    Ready   Active        Leader
 tm8onsigmvlc16hc3hhv7jef2    node2     Ready   Active        
 y9phrot18cf999gpwx5ne4uvr    node1     Ready   Active
+```
 
 The asterix (*) on the first node indicates that it is the node you sent the request to.
 Part 2 - Deploy v1.0 of our app
 Now that we have our cluster setup, let’s deploy our “myapp” application. You can do this by running the following script (remember to press “enter” to steps to the next command):
 
+```
 $ swarmDemo2
+```
 
 Let’s look at some of the key steps in this script in more detail.
 
 First we create a new service (myapp) in our swarm cluster based on version 1.0 of our application that we previously uploaded to our local registry:
 
+```
 $ docker service create --name myapp -p 80:80 docker:5000/myapp:1.0
+```
 
 The “-p 80:80” flag tell Docker to map port 80 on the entire cluster to port 80 in the service. This means that any incoming request to any node in the cluster on port 80 will be automatically routed to port 80 on the service. If the service is not running on that node, then Docker will automatically route the request to a node that does have it running.
 
 Next we check to see that status of the service:
 
+```
 $ docker service ls
 ID            NAME   MODE        REPLICAS  IMAGE
 kzrbvevx1wfq  myapp  replicated  0/1       docker:5000/myapp:1.0
+```
 
 Here can see that it is deployed and that we’ve asked for just one instance, but it’s not ready yet. Once it’s ready we’ll then use the “curl” to see if we can access it by hitting “localhost” as well as from each node in the cluster.
 
 Next, we scale our service to have three instances instead of just one:
 
+```
 $ docker service scale myapp=3
 myapp scaled to 3
+```
 
 After waiting a bit, we can see all three running:
 
+```
 $ docker service ls
 ID            NAME   MODE        REPLICAS  IMAGE
 kzrbvevx1wfq  myapp  replicated  3/3       docker:5000/myapp:1.0
+```
 
 When Docker scales the service it should spread the instances of the service out evenly across the cluster, meaning one instance per node - since we have 3 nodes. The script will then create, and add, a new node to the cluster/swarm using the same commands we did previously. Once the node is fully added, we then use “curl” against that new node to verify that the request will be routed to the service even though it’s not running on that node. And, if you look carefully, you’ll see that the IP addresses shown in the output changes each time as the requests are round-robined across all instances.
-Part 3 - Build a v2.0 of the app
+
+#### Part 3 - Build a v2.0 of the app
+
 In this next step we’ll be upgrade to version 2 of our application. But first, we need to build it, but using “Dockerfile3”:
 
+```
 $ docker build -f Dockerfile3 -t docker:5000/myapp:2.0 .
 Sending build context to Docker daemon 5.938 MB
 Step 1/5 : FROM scratch
@@ -1083,14 +1126,19 @@ Step 5/5 : ENTRYPOINT /myapp
  ---> efa00da0be06
 Removing intermediate container b955aa9721ea
 Successfully built efa00da0be06
+```
 
 Note the “2.0” tag used in the image name on the command line. If we look at the build output you should notice the addition of one new line in the Dockerfile:
 
+```
 Step 4/5 : ENV APP_VER 2.0
+```
 
 This line tells Docker to set the environment variable “APP_VER” to a value of “2.0” inside of the image being built. The code for “myapp” will then use that value when it prints its output. You might remember that the output from “myapp” starts with:
 
+```
 <pre><b>v1.0 Host:...
+```
 
 So, now we’ll know that we’re running the new version when that line says “v2.0” instead.
 
@@ -1098,49 +1146,68 @@ It is also worth noting that Docker build was able to use the cache until the �
 
 After building the new image, we need to push it to the registry:
 
+```
 $ docker push docker:5000/myapp:2.0
 The push refers to a repository [docker:5000/myapp]
 4d1f5c1b33ee: Preparing
 4d1f5c1b33ee: Layer already exists
 2.0: digest: sha256:dff424aeb60b5b79e438262ef4958d18f984f59850844652a3102fef29cb1c97 size: 528
-Part 4 - Upgrade the App
+```
+
+#### Part 4 - Upgrade the App
+
 Before we upgrade the app to the new version of the Docker image, in a second terminal window run this command:
 
+```
 $ docker exec -ti node3 watch -d -n 1 curl -s 127.0.0.1
+```
 
 This will continually check the output of the app by rotating through all 3 instances. Notice that initially it should show “1.0” as the version number.
 
 Now let’s upgrade it:
 
+```
 $ docker service update --image=docker:5000/myapp:2.0 myapp
 myapp
+```
 
 If you watch the curl command in the second window you should eventually see it switch from “1.0” to “2.0” for all instances of the service that is running. Also, notice that the curl never get any error message. We were able to upgrade 
 
 When done you can use “control-c” to stop the curl commands in the second window, and use the following command to clean-up (tear down) your Docker SwarmKit cluster:
 
+```
 $ swarmDemo9
+```
 
 There will be lots of output as it deletes all of the resources we created.
-Summary
+
+#### Summary
+
 Managing a scalable application can be challenging, especially when you need to ensure that it must be upgradeable without any downtime. By leveraging the networking mesh, managing the routing for you and doing a rolling upgrade across all of your instances, Docker will provide the high-availability and resiliency needed by today’s enterprise applications.
+
+```
 Conclusion
+```
+
 With that we’re now done with this overview of Docker. Keep in mind that there are still many other Docker features that we didn’t touch on. For example, networking, volumes and security. Obviously, all very important topics but due to time constraints they will have to be covered in a future set of exercises. However, having said that, you should consider looking at the Docker documentation - it does a good job of explaining these topics and like everything in Docker, they did a good job of exposing these features in a very simple user-friendly way.
 
 
 
-Exercises for Developer Advocates
-Setup 2 containers - one with NGINX that acts as a proxy to route requests to the 2nd container running “myapp”. Make it so that NGINX is reachable on the external network, but “myapp” is only available to the NGINX container, not the external network.
-NGINX’s config should be persisted on the host so when the container goes away you don’t lose it and can reuse for the next time you run it.
-Look at using proxy_pass config option to route requests from nginx to myapp.
-Modify previous exercise so that “myapp” is a service that is scaled and when it is NGINX routes requests to all instances.
-Take a program in your favorite language and try to dockerize the build and the running, if those are separate steps. For example, beyond golang, there are images for python, ruby, java, etc.
-Run a database in a temporary container and write a Makefile or shell script to have a program that uses the database spin up a fresh DB for each scenario.
-Run through John’s Office Space scenario. (Do something to modify it. Or make this Other Material.) https://github.ibm.com/John-Zaccone/intro-to-docker-lab
+#### Exercises for Developer Advocates
+
+1. Setup 2 containers - one with NGINX that acts as a proxy to route requests to the 2nd container running “myapp”. Make it so that NGINX is reachable on the external network, but “myapp” is only available to the NGINX container, not the external network.
+2. NGINX’s config should be persisted on the host so when the container goes away you don’t lose it and can reuse for the next time you run it.
+3. Look at using proxy_pass config option to route requests from nginx to myapp.
+4. Modify previous exercise so that “myapp” is a service that is scaled and when it is NGINX routes requests to all instances.
+5. Take a program in your favorite language and try to dockerize the build and the running, if those are separate steps. For example, beyond golang, there are images for python, ruby, java, etc.
+6. Run a database in a temporary container and write a Makefile or shell script to have a program that uses the database spin up a fresh DB for each scenario.
+7. Run through John’s Office Space scenario. (Do something to modify it. Or make this Other Material.) https://github.ibm.com/John-Zaccone/intro-to-docker-lab
 Redis + a python flask frontend like in the Kube101 class.
-Run any kind of distributed or cluster/sharded DB in containers.
-Additional content to discuss during our training sessions (if time)
-Docker vs Moby vs OCI vs CNCF
-IBM’s activities in Docker
-Relationship between Docker and Kube, and IBM’s long term view of each
-5-minute overview of Kubernetes just so people can answer very basic questions
+8. Run any kind of distributed or cluster/sharded DB in containers.
+
+#### Additional content to discuss during our training sessions (if time)
+
+1. Docker vs Moby vs OCI vs CNCF
+2. IBM’s activities in Docker
+3. Relationship between Docker and Kube, and IBM’s long term view of each
+4. 5-minute overview of Kubernetes just so people can answer very basic questions
